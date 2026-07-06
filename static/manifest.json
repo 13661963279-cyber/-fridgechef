@@ -1,0 +1,23 @@
+{
+  "name": "FridgeChef - 冰箱菜谱助手",
+  "short_name": "FridgeChef",
+  "description": "拍一拍冰箱，AI 告诉你今天做什么菜",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#4CAF50",
+  "background_color": "#f8f9f5",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

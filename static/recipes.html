@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>菜谱推荐 - FridgeChef</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#4CAF50">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FridgeChef">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+</head>
+<body>
+
+<div class="header">
+  <h1>🍳 今日推荐</h1>
+  <p id="headerInfo">正在根据你的食材生成菜谱...</p>
+</div>
+
+<div class="loading" id="loadingBox">
+  <div class="spinner"></div>
+  <p class="loading-text">AI 正在为你设计菜谱...</p>
+  <p style="font-size:12px;color:#aaa;margin-top:8px;">这大约需要 5-10 秒</p>
+</div>
+
+<div id="recipeContainer"></div>
+
+<div id="errorBox" style="display:none;">
+  <div class="empty">
+    <span class="icon">😢</span>
+    <p id="errorMsg">生成失败</p>
+    <button class="btn btn-primary" onclick="location.reload()" style="margin-top:16px;">重试</button>
+    <button class="btn btn-outline" onclick="location.href='/pantry.html'" style="margin-top:8px;">回去修改食材</button>
+  </div>
+</div>
+
+<nav class="nav">
+  <a href="/"><span class="icon">🏠</span>首页</a>
+  <a href="/pantry.html"><span class="icon">🧺</span>食材库</a>
+  <a href="/favorites.html"><span class="icon">⭐</span>收藏</a>
+</nav>
+
+<script>
+const PANTRY_KEY = 'fridgechef_pantry';
+const FAV_KEY = 'fridgechef_favorites';
+
+function loadPantry() {
+  try { return JSON.parse(localStorage.getItem(PANTRY_KEY)) || []; }
+  catch { return []; }
+}
+
+function loadFavorites() {
+  try { return JSON.parse(localStorage.getItem(FAV_KEY)) || []; }
+  catch { return []; }
+}
+
+function saveFavorites(favs) {
+  localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+}
+
+function isFavorited(recipe) {
+  return loadFavorites().some(f => f.name === recipe.name);
+}
+
+function toggleFavorite(recipe) {
+  let favs = loadFavorites();
+  const idx = favs.findIndex(f => f.name === recipe.name);
+  if (idx >= 0) {
+    favs.splice(idx, 1);
+  } else {
+    favs.push({ ...recipe, savedAt: new Date().toLocaleString() });
+  }
+  saveFavorites(favs);
+  renderRecipes(window.recipeData);
+}
+
+const diffMap = { '简单': 'difficulty-easy', '中等': 'difficulty-medium', '挑战': 'difficulty-hard' };
+const heatIcons = { '大火': '🔥', '中火': '🔥', '小火': '🔥', '关火': '❌' };
+
+function renderRecipes(recipes) {
+  const container = document.getElementById('recipeContainer');
+  const headerInfo = document.getElementById('headerInfo');
+  const pantry = loadPantry();
+  const pantryNames = new Set(pantry.map(i => i.name));
+
+  headerInfo.textContent = `根据 ${pantry.length} 种食材为你生成 ${recipes.length} 个菜谱`;
+
+  container.innerHTML = recipes.map((r, idx) => {
+    const fav = isFavorited(r);
+    return `
+    <div class="recipe-card">
+      <div class="recipe-header">
+        <div>
+          <div class="recipe-name">${esc(r.name)}</div>
+          <span class="difficulty-badge ${diffMap[r.difficulty] || 'difficulty-easy'}">${esc(r.difficulty)}</span>
+          <span style="font-size:13px;color:#999;margin-left:6px;">${esc(r.cooking_time)}</span>
+        </div>
+        <button onclick="toggleFavorite(window.recipeData[${idx}])"
+                style="font-size:24px;background:none;border:none;cursor:pointer;padding:4px;"
+                title="${fav ? '取消收藏' : '收藏'}">
+          ${fav ? '⭐' : '☆'}
+        </button>
+      </div>
+
+      <div class="recipe-body">
+        <div class="recipe-time">⏱ ${esc(r.cooking_time)}</div>
+
+        <div class="section-title">📋 食材清单</div>
+        <div class="ingredients-grid">
+          ${(r.ingredients_detail || []).map(d => {
+            const owned = pantryNames.has(d.name);
+            return `<span class="ingredient-tag ${owned ? 'owned' : 'buy'}">${esc(d.name)} ${esc(d.amount)}${owned ? ' ✅' : ' 🛒'}</span>`;
+          }).join('')}
+        </div>
+
+        ${r.need_to_buy && r.need_to_buy.length > 0 ? `
+        <div style="font-size:13px;color:#E65100;margin-top:8px;">
+          💡 需要购买：${r.need_to_buy.map(b => esc(b)).join('、')}
+        </div>` : ''}
+
+        <div class="section-title">👨‍🍳 烹饪步骤</div>
+        ${(r.steps || []).map(s => `
+          <div class="step-item">
+            <div class="step-num">${s.step}</div>
+            <div class="step-content">
+              <div class="step-action">${esc(s.action)}</div>
+              <div class="step-detail">
+                <span>🧂 ${esc(s.seasoning)}</span>
+                <span>${heatIcons[s.heat] || ''} ${esc(s.heat)}</span>
+                <span>⏱ ${esc(s.duration)}</span>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+
+        <div class="section-title">📊 营养估算</div>
+        <div class="nutrition-row">
+          <div class="nutrition-item">
+            <div class="value">${esc(r.nutrition?.calories || '—')}</div>
+            <div class="label">卡路里 (大卡)</div>
+          </div>
+          <div class="nutrition-item">
+            <div class="value">${esc(r.nutrition?.protein || '—')}</div>
+            <div class="label">蛋白质</div>
+          </div>
+          <div class="nutrition-item">
+            <div class="value">${esc(r.nutrition?.carbs || '—')}</div>
+            <div class="label">碳水</div>
+          </div>
+          <div class="nutrition-item">
+            <div class="value">${esc(r.nutrition?.fat || '—')}</div>
+            <div class="label">脂肪</div>
+          </div>
+        </div>
+
+        ${r.tips ? `
+        <div class="tips-box">💡 ${esc(r.tips)}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
+}
+
+function safe(obj, key, fallback) {
+  return (obj && obj[key] != null) ? obj[key] : fallback;
+}
+
+// ===== Main =====
+async function fetchRecipes() {
+  const pantry = loadPantry();
+  if (pantry.length === 0) {
+    document.getElementById('loadingBox').style.display = 'none';
+    document.getElementById('errorBox').style.display = 'block';
+    document.getElementById('errorMsg').textContent = '食材库为空，请先添加食材';
+    return;
+  }
+
+  document.getElementById('loadingBox').style.display = 'block';
+  document.getElementById('errorBox').style.display = 'none';
+
+  const ingredients = pantry.map(i => ({ name: i.name, amount: i.amount }));
+
+  try {
+    const resp = await fetch('/recipes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ingredients })
+    });
+
+    const data = await resp.json();
+
+    if (data.error) {
+      throw new Error(data.error);
+    }
+
+    if (!data.recipes || data.recipes.length === 0) {
+      throw new Error('AI 未能生成菜谱，请重试');
+    }
+
+    window.recipeData = data.recipes;
+    document.getElementById('loadingBox').style.display = 'none';
+    renderRecipes(data.recipes);
+
+  } catch (err) {
+    document.getElementById('loadingBox').style.display = 'none';
+    document.getElementById('errorBox').style.display = 'block';
+    document.getElementById('errorMsg').textContent = err.message || '未知错误';
+    console.error(err);
+  }
+}
+
+fetchRecipes();
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js');
+}
+</script>
+</body>
+</html>

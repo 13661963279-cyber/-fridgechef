@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>收藏菜谱 - FridgeChef</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#4CAF50">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FridgeChef">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+</head>
+<body>
+
+<div class="header">
+  <h1>⭐ 收藏菜谱</h1>
+  <p id="favCount">共 0 个收藏</p>
+</div>
+
+<div id="favContainer"></div>
+
+<div class="empty" id="emptyState">
+  <span class="icon">⭐</span>
+  <p>还没有收藏菜谱</p>
+  <p style="font-size:13px;">生成菜谱后点击 ⭐ 按钮即可收藏</p>
+  <button class="btn btn-primary" onclick="location.href='/pantry.html'" style="margin-top:16px;">去食材库开始</button>
+</div>
+
+<nav class="nav">
+  <a href="/"><span class="icon">🏠</span>首页</a>
+  <a href="/pantry.html"><span class="icon">🧺</span>食材库</a>
+  <a href="/favorites.html" class="active"><span class="icon">⭐</span>收藏</a>
+</nav>
+
+<script>
+const FAV_KEY = 'fridgechef_favorites';
+const diffMap = { '简单': 'difficulty-easy', '中等': 'difficulty-medium', '挑战': 'difficulty-hard' };
+const heatIcons = { '大火': '🔥', '中火': '🔥', '小火': '🔥', '关火': '❌' };
+
+function load() {
+  try { return JSON.parse(localStorage.getItem(FAV_KEY)) || []; }
+  catch { return []; }
+}
+
+function removeFavorite(name) {
+  if (!confirm(`确定删除「${name}」的收藏吗？`)) return;
+  const favs = load().filter(f => f.name !== name);
+  localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+  render();
+}
+
+function render() {
+  const favs = load();
+  document.getElementById('favCount').textContent = `共 ${favs.length} 个收藏`;
+  document.getElementById('emptyState').style.display = favs.length === 0 ? 'block' : 'none';
+
+  document.getElementById('favContainer').innerHTML = favs.map((r, idx) => `
+    <div class="recipe-card">
+      <div class="recipe-header">
+        <div>
+          <div class="recipe-name">${esc(r.name)}</div>
+          <span class="difficulty-badge ${diffMap[r.difficulty] || 'difficulty-easy'}">${esc(r.difficulty)}</span>
+          <span style="font-size:13px;color:#999;margin-left:6px;">${esc(r.cooking_time)}</span>
+        </div>
+        <button onclick="removeFavorite('${esc(r.name).replace(/'/g, "\\'")}')"
+                style="font-size:20px;background:none;border:none;cursor:pointer;padding:4px;">
+          🗑
+        </button>
+      </div>
+
+      <div class="recipe-body">
+        <div class="section-title">📋 食材清单</div>
+        <div class="ingredients-grid">
+          ${(r.ingredients_detail || []).map(d =>
+            `<span class="ingredient-tag">${esc(d.name)} ${esc(d.amount)}</span>`
+          ).join('')}
+        </div>
+
+        <div class="section-title">👨‍🍳 烹饪步骤</div>
+        ${(r.steps || []).map(s => `
+          <div class="step-item">
+            <div class="step-num">${s.step}</div>
+            <div class="step-content">
+              <div class="step-action">${esc(s.action)}</div>
+              <div class="step-detail">
+                <span>🧂 ${esc(s.seasoning)}</span>
+                <span>${heatIcons[s.heat] || ''} ${esc(s.heat)}</span>
+                <span>⏱ ${esc(s.duration)}</span>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+
+        ${r.tips ? `<div class="tips-box">💡 ${esc(r.tips)}</div>` : ''}
+        <div style="font-size:11px;color:#aaa;margin-top:8px;">收藏于 ${esc(r.savedAt)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
+}
+
+render();
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js');
+}
+</script>
+</body>
+</html>

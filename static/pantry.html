@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>食材库 - FridgeChef</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#4CAF50">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FridgeChef">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+</head>
+<body>
+
+<div class="header">
+  <h1>🧺 我的食材库</h1>
+  <p id="pantryCount">共 0 种食材</p>
+</div>
+
+<div class="card">
+  <div class="input-group">
+    <input type="text" id="nameInput" placeholder="食材名称（如：鸡蛋）" autocomplete="off">
+    <input type="text" id="amountInput" placeholder="数量（如：3个）" style="max-width:100px;">
+  </div>
+  <button class="btn btn-primary" onclick="addIngredient()" style="margin-top:4px;">+ 添加食材</button>
+
+  <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;" id="quickTags">
+  </div>
+</div>
+
+<ul class="ingredient-list card" id="pantryList"></ul>
+
+<div class="empty" id="emptyState">
+  <span class="icon">🧺</span>
+  <p>食材库空空如也</p>
+  <p style="font-size:13px;">上方输入食材名称和数量开始添加</p>
+</div>
+
+<div style="margin: 20px 16px;">
+  <button class="btn btn-primary" id="cookBtn" onclick="goCook()" disabled>
+    🍳 帮我想菜
+  </button>
+</div>
+
+<nav class="nav">
+  <a href="/"><span class="icon">🏠</span>首页</a>
+  <a href="/pantry.html" class="active"><span class="icon">🧺</span>食材库</a>
+  <a href="/favorites.html"><span class="icon">⭐</span>收藏</a>
+</nav>
+
+<script>
+const STORAGE_KEY = 'fridgechef_pantry';
+const COMMON_INGREDIENTS = ['鸡蛋', '番茄', '土豆', '洋葱', '青菜', '猪肉', '鸡胸肉', '豆腐', '青椒', '胡萝卜', '大蒜', '姜', '葱', '米饭', '面条', '牛奶', '芝士', '火腿', '虾仁', '西兰花'];
+
+function load() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+  catch { return []; }
+}
+
+function save(items) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+}
+
+function addIngredient() {
+  const nameEl = document.getElementById('nameInput');
+  const amountEl = document.getElementById('amountInput');
+  const name = nameEl.value.trim();
+  const amount = amountEl.value.trim() || '适量';
+  if (!name) return;
+
+  const items = load();
+  const existing = items.find(i => i.name === name);
+  if (existing) {
+    existing.amount = amount;
+  } else {
+    items.push({
+      id: Date.now(),
+      name,
+      amount,
+      unit: '',
+      added: new Date().toLocaleDateString()
+    });
+  }
+  save(items);
+  nameEl.value = '';
+  amountEl.value = '';
+  nameEl.focus();
+  render();
+}
+
+function updateAmount(id, delta) {
+  const items = load();
+  const item = items.find(i => i.id === id);
+  if (!item) return;
+  const match = item.amount.match(/^[\d.]+/);
+  if (match) {
+    const num = parseFloat(match[0]) + delta;
+    if (num <= 0) { removeItem(id); return; }
+    item.amount = num + item.amount.replace(/^[\d.]+/, '');
+  }
+  save(items);
+  render();
+}
+
+function removeItem(id) {
+  if (!confirm('确定删除这个食材吗？')) return;
+  const items = load().filter(i => i.id !== id);
+  save(items);
+  render();
+}
+
+function clearAll() {
+  if (!confirm('确定清空所有食材吗？此操作不可撤销。')) return;
+  save([]);
+  render();
+}
+
+function goCook() {
+  const items = load();
+  if (items.length === 0) return;
+  localStorage.setItem('fridgechef_recipes', JSON.stringify([]));
+  window.location.href = '/recipes.html';
+}
+
+function renderQuickTags() {
+  const items = load();
+  const names = new Set(items.map(i => i.name));
+  const unused = COMMON_INGREDIENTS.filter(c => !names.has(c));
+  document.getElementById('quickTags').innerHTML = unused.slice(0, 8).map(name =>
+    `<span class="ingredient-tag" style="cursor:pointer;" onclick="quickAdd('${esc(name)}')">+ ${esc(name)}</span>`
+  ).join('');
+}
+
+function quickAdd(name) {
+  document.getElementById('nameInput').value = name;
+  document.getElementById('amountInput').focus();
+}
+
+function render() {
+  const items = load();
+  document.getElementById('pantryCount').textContent = `共 ${items.length} 种食材`;
+  document.getElementById('cookBtn').disabled = items.length === 0;
+  document.getElementById('emptyState').style.display = items.length === 0 ? 'block' : 'none';
+
+  document.getElementById('pantryList').innerHTML = items.map(i =>
+    `<li class="ingredient-item">
+      <div class="ingredient-info">
+        <div class="ingredient-name">${esc(i.name)}</div>
+        <div class="ingredient-meta">${i.amount} · 添加于 ${i.added}</div>
+      </div>
+      <div class="ingredient-actions">
+        <button class="qty-btn" onclick="updateAmount(${i.id}, -1)">−</button>
+        <span class="qty-num">${i.amount}</span>
+        <button class="qty-btn" onclick="updateAmount(${i.id}, 1)">+</button>
+        <button class="delete-btn" onclick="removeItem(${i.id})">🗑</button>
+      </div>
+    </li>`
+  ).join('') + (items.length > 0
+    ? `<li style="text-align:center;padding:12px;">
+        <button class="btn btn-small btn-danger" onclick="clearAll()">清空全部</button>
+       </li>`
+    : '');
+
+  renderQuickTags();
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// Enter key to add
+document.getElementById('nameInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addIngredient();
+});
+document.getElementById('amountInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addIngredient();
+});
+
+render();
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js');
+}
+</script>
+</body>
+</html>

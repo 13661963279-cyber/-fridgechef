@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>扫描食材 - FridgeChef</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#4CAF50">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FridgeChef">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <style>
+    .preview-box {
+      width: 100%;
+      max-height: 260px;
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin: 12px 0;
+      background: #eee;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .preview-box img {
+      width: 100%;
+      height: auto;
+      max-height: 260px;
+      object-fit: cover;
+    }
+    .scan-actions {
+      display: flex;
+      gap: 10px;
+      margin: 8px 0;
+    }
+    .scan-actions .btn { flex: 1; }
+
+    .result-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .result-item input[type="checkbox"] {
+      width: 20px; height: 20px;
+      accent-color: var(--green);
+    }
+    .result-item input[type="text"] {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .result-item input[type="text"]:first-of-type { max-width: 120px; }
+    .result-item input[type="text"]:last-of-type { max-width: 80px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📷 扫描食材</h1>
+  <p>拍一张冰箱照片，自动识别食材</p>
+</div>
+
+<div class="card" id="uploadArea">
+  <label for="cameraInput" style="display:block;width:100%;cursor:pointer;">
+    <div class="preview-box" id="previewBox">
+      <div style="text-align:center;color:#aaa;padding:40px;">
+        <div style="font-size:48px;">📸</div>
+        <p style="margin-top:8px;">点击拍照或选择图片</p>
+      </div>
+    </div>
+  </label>
+  <input type="file" id="cameraInput" accept="image/*" capture="environment"
+         style="display:none;" onchange="handleImageSelect(event)">
+  <div class="scan-actions">
+    <button class="btn btn-primary" id="scanBtn" onclick="startScan()" disabled>🔍 开始识别</button>
+    <button class="btn btn-outline" onclick="document.getElementById('cameraInput').click()">📷 重拍</button>
+  </div>
+</div>
+
+<div class="loading" id="loadingBox" style="display:none;">
+  <div class="spinner"></div>
+  <p class="loading-text">AI 正在识别食材中...</p>
+  <p style="font-size:12px;color:#aaa;margin-top:8px;">大约需要 3-5 秒</p>
+</div>
+
+<div class="card" id="resultArea" style="display:none;">
+  <h3 style="margin-bottom:4px;">🔍 识别结果</h3>
+  <p style="font-size:13px;color:var(--text-light);margin-bottom:12px;" id="resultCount"></p>
+  <div id="resultList"></div>
+
+  <div class="input-group" style="margin-top:16px;">
+    <input type="text" id="manualName" placeholder="补充食材名称">
+    <input type="text" id="manualAmount" placeholder="数量" style="max-width:80px;">
+    <button class="btn btn-small btn-outline" onclick="addManual()" style="white-space:nowrap;">+ 补充</button>
+  </div>
+
+  <button class="btn btn-primary" id="addToPantryBtn" onclick="addToPantry()">
+    ✅ 加入食材库
+  </button>
+</div>
+
+<div id="errorBox" style="display:none;">
+  <div class="empty">
+    <span class="icon">😢</span>
+    <p id="errorMsg">识别失败</p>
+    <button class="btn btn-primary" onclick="resetScan()" style="margin-top:12px;">重试</button>
+  </div>
+</div>
+
+<nav class="nav">
+  <a href="/"><span class="icon">🏠</span>首页</a>
+  <a href="/pantry.html"><span class="icon">🧺</span>食材库</a>
+  <a href="/favorites.html"><span class="icon">⭐</span>收藏</a>
+</nav>
+
+<script>
+const PANTRY_KEY = 'fridgechef_pantry';
+const MAX_IMG_SIZE = 1200; // max width/height for compression
+
+let selectedImage = null;
+
+function handleImageSelect(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    compressImage(ev.target.result, (compressed) => {
+      selectedImage = compressed;
+      const preview = document.getElementById('previewBox');
+      preview.innerHTML = `<img src="${compressed}" alt="预览">`;
+      document.getElementById('scanBtn').disabled = false;
+      document.getElementById('resultArea').style.display = 'none';
+      document.getElementById('errorBox').style.display = 'none';
+    });
+  };
+  reader.readAsDataURL(file);
+}
+
+function compressImage(dataUrl, callback) {
+  const img = new Image();
+  img.onload = function() {
+    let { width, height } = img;
+    if (width <= MAX_IMG_SIZE && height <= MAX_IMG_SIZE) {
+      callback(dataUrl);
+      return;
+    }
+    const ratio = Math.min(MAX_IMG_SIZE / width, MAX_IMG_SIZE / height);
+    width = Math.round(width * ratio);
+    height = Math.round(height * ratio);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+    callback(canvas.toDataURL('image/jpeg', 0.85));
+  };
+  img.src = dataUrl;
+}
+
+async function startScan() {
+  if (!selectedImage) return;
+
+  document.getElementById('loadingBox').style.display = 'block';
+  document.getElementById('resultArea').style.display = 'none';
+  document.getElementById('errorBox').style.display = 'none';
+  document.getElementById('uploadArea').style.display = 'none';
+
+  try {
+    const resp = await fetch('/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: selectedImage }),
+    });
+
+    const data = await resp.json();
+    document.getElementById('loadingBox').style.display = 'none';
+    document.getElementById('uploadArea').style.display = 'block';
+
+    if (data.error) throw new Error(data.error);
+
+    window.scanResults = data.ingredients || [];
+    renderResults(window.scanResults);
+
+  } catch (err) {
+    document.getElementById('loadingBox').style.display = 'none';
+    document.getElementById('uploadArea').style.display = 'block';
+    document.getElementById('errorBox').style.display = 'block';
+    document.getElementById('errorMsg').textContent = err.message || '识别失败';
+  }
+}
+
+function renderResults(items) {
+  const area = document.getElementById('resultArea');
+  const list = document.getElementById('resultList');
+  const count = document.getElementById('resultCount');
+
+  area.style.display = 'block';
+  count.textContent = `共识别到 ${items.length} 种食材，勾选要添加的：`;
+
+  list.innerHTML = items.map((item, i) => `
+    <div class="result-item">
+      <input type="checkbox" id="chk${i}" checked onchange="updateAddBtn()">
+      <input type="text" value="${esc(item.name)}" id="name${i}">
+      <input type="text" value="${esc(item.amount)}" id="amount${i}">
+      <button class="delete-btn" onclick="removeItem(${i})">🗑</button>
+    </div>
+  `).join('');
+
+  updateAddBtn();
+}
+
+function removeItem(idx) {
+  window.scanResults.splice(idx, 1);
+  renderResults(window.scanResults);
+}
+
+function addManual() {
+  const nameEl = document.getElementById('manualName');
+  const amountEl = document.getElementById('manualAmount');
+  const name = nameEl.value.trim();
+  if (!name) return;
+
+  window.scanResults.push({ name, amount: amountEl.value.trim() || '适量' });
+  nameEl.value = '';
+  amountEl.value = '';
+  renderResults(window.scanResults);
+}
+
+function updateAddBtn() {
+  const anyChecked = window.scanResults.some((_, i) => {
+    const cb = document.getElementById('chk' + i);
+    return cb && cb.checked;
+  });
+  document.getElementById('addToPantryBtn').disabled = !anyChecked;
+}
+
+function addToPantry() {
+  const pantry = JSON.parse(localStorage.getItem(PANTRY_KEY) || '[]');
+
+  window.scanResults.forEach((item, i) => {
+    const cb = document.getElementById('chk' + i);
+    if (!cb || !cb.checked) return;
+
+    const name = document.getElementById('name' + i).value.trim();
+    const amount = document.getElementById('amount' + i).value.trim();
+    if (!name) return;
+
+    const existing = pantry.find(p => p.name === name);
+    if (existing) {
+      // Only show a brief confirm if amount differs
+      existing.amount = amount || existing.amount;
+    } else {
+      pantry.push({
+        id: Date.now() + i,
+        name,
+        amount: amount || '适量',
+        unit: '',
+        added: new Date().toLocaleDateString(),
+      });
+    }
+  });
+
+  localStorage.setItem(PANTRY_KEY, JSON.stringify(pantry));
+
+  const count = pantry.length;
+  alert(`已添加！食材库现有 ${count} 种食材。`);
+  window.location.href = '/pantry.html';
+}
+
+function resetScan() {
+  selectedImage = null;
+  document.getElementById('previewBox').innerHTML = `
+    <div style="text-align:center;color:#aaa;padding:40px;">
+      <div style="font-size:48px;">📸</div>
+      <p style="margin-top:8px;">点击拍照或选择图片</p>
+    </div>`;
+  document.getElementById('scanBtn').disabled = true;
+  document.getElementById('resultArea').style.display = 'none';
+  document.getElementById('errorBox').style.display = 'none';
+}
+
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
+}
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js');
+}
+</script>
+</body>
+</html>

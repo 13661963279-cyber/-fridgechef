@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>FridgeChef - 冰箱菜谱助手</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#4CAF50">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FridgeChef">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+</head>
+<body>
+
+<div class="header">
+  <h1>FridgeChef</h1>
+  <p>看看冰箱，今天吃什么？</p>
+</div>
+
+<div class="hero-action">
+  <button class="btn btn-outline" onclick="location.href='/scan.html'" style="margin-bottom:12px;">
+    📷 扫描食材（拍照识别）
+  </button>
+  <button class="btn btn-primary" onclick="location.href='/pantry.html'">
+    ✏️ 手动管理食材库
+  </button>
+</div>
+
+<div class="card" id="quickPreview" style="display:none;">
+  <h3 style="margin-bottom:12px;">📦 当前食材库</h3>
+  <ul class="ingredient-list" id="previewList"></ul>
+  <div class="empty" id="previewEmpty">
+    <span class="icon">🛒</span>
+    <p>食材库还是空的</p>
+    <p style="font-size:12px;">点击上方按钮添加食材吧</p>
+  </div>
+</div>
+
+<nav class="nav">
+  <a href="/" class="active"><span class="icon">🏠</span>首页</a>
+  <a href="/pantry.html"><span class="icon">🧺</span>食材库</a>
+  <a href="/favorites.html"><span class="icon">⭐</span>收藏</a>
+</nav>
+
+<script>
+const STORAGE_KEY = 'fridgechef_pantry';
+
+function loadPantry() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+  } catch { return []; }
+}
+
+function renderPreview() {
+  const items = loadPantry();
+  const preview = document.getElementById('quickPreview');
+  const list = document.getElementById('previewList');
+  const empty = document.getElementById('previewEmpty');
+
+  if (items.length === 0) {
+    preview.style.display = 'block';
+    list.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+
+  preview.style.display = 'block';
+  empty.style.display = 'none';
+  list.innerHTML = items.slice(0, 5).map(i =>
+    `<li class="ingredient-item">
+      <div class="ingredient-info">
+        <div class="ingredient-name">${esc(i.name)}</div>
+        <div class="ingredient-meta">${i.amount} ${i.unit || ''}</div>
+      </div>
+    </li>`
+  ).join('');
+
+  if (items.length > 5) {
+    list.innerHTML += `<li style="text-align:center;color:#999;font-size:13px;padding:8px;">还有 ${items.length - 5} 种食材...</li>`;
+  }
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+renderPreview();
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js');
+}
+</script>
+</body>
+</html>
