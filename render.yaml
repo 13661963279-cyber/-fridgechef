@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: fridgechef
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_BASE_URL
+        sync: false
+      - key: PORT
+        value: "5000"
